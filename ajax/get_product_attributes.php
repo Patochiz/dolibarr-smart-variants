@@ -1,10 +1,10 @@
 <?php
 /**
- * Get Product Attributes AJAX Endpoint - Fixed Version
+ * Get Product Attributes AJAX Endpoint - Path Fixed Version
  * 
  * @package SmartVariants
  * @author  Claude AI
- * @version 1.0.2
+ * @version 1.0.3
  */
 
 // Define constants for AJAX calls
@@ -18,14 +18,59 @@ if (!defined('NOREQUIREMENU')) define('NOREQUIREMENU', '1');
 if (!defined('NOREQUIREHTML')) define('NOREQUIREHTML', '1');
 if (!defined('NOREQUIREAJAX')) define('NOREQUIREAJAX', '0');
 
-// Include Dolibarr environment
+// Include Dolibarr environment - Multiple path attempts
 $res = 0;
-if (!$res && file_exists("../../../main.inc.php")) $res = @include "../../../main.inc.php";
-if (!$res && file_exists("../../../../main.inc.php")) $res = @include "../../../../main.inc.php";
+$attempted_paths = array();
+
+// Try different possible paths
+$possible_paths = array(
+    "../../../main.inc.php",           // From /custom/smartvariants/ajax/ to /
+    "../../../../main.inc.php",        // Alternative
+    "../../../doli/main.inc.php",     // If in subdirectory
+    "../../../../doli/main.inc.php",   // Alternative subdirectory
+    "/home/diamanti/www/doli/main.inc.php", // Absolute path based on your config
+);
+
+foreach ($possible_paths as $path) {
+    $attempted_paths[] = $path;
+    if (file_exists($path)) {
+        $res = @include $path;
+        if ($res) {
+            break;
+        }
+    }
+}
+
+// If still not loaded, try to find it dynamically
+if (!$res) {
+    // Try to find main.inc.php by going up the directory tree
+    $current_dir = __DIR__;
+    for ($i = 0; $i < 6; $i++) {
+        $current_dir = dirname($current_dir);
+        $main_file = $current_dir . '/main.inc.php';
+        $attempted_paths[] = $main_file;
+        
+        if (file_exists($main_file)) {
+            $res = @include $main_file;
+            if ($res) {
+                break;
+            }
+        }
+    }
+}
+
 if (!$res) {
     http_response_code(500);
     header('Content-Type: application/json');
-    die(json_encode(array('success' => false, 'message' => 'Cannot load Dolibarr environment')));
+    die(json_encode(array(
+        'success' => false, 
+        'message' => 'Cannot load Dolibarr environment',
+        'debug' => array(
+            'attempted_paths' => $attempted_paths,
+            'current_dir' => __DIR__,
+            'script_name' => $_SERVER['SCRIPT_NAME']
+        )
+    )));
 }
 
 require_once DOL_DOCUMENT_ROOT.'/product/class/product.class.php';
@@ -41,6 +86,10 @@ $response = array(
 // Check if user is logged in
 if (empty($user) || empty($user->id)) {
     $response['message'] = 'User not authenticated';
+    $response['debug'] = array(
+        'user_exists' => !empty($user),
+        'user_id' => !empty($user) ? $user->id : 'N/A'
+    );
     header('Content-Type: application/json');
     echo json_encode($response);
     exit;
@@ -49,6 +98,11 @@ if (empty($user) || empty($user->id)) {
 // Security check - more flexible permission check
 if (empty($user->rights->produit->lire) && empty($user->admin)) {
     $response['message'] = 'Insufficient permissions - need product read rights';
+    $response['debug'] = array(
+        'admin' => !empty($user->admin),
+        'produit_rights' => !empty($user->rights->produit),
+        'read_rights' => !empty($user->rights->produit->lire)
+    );
     header('Content-Type: application/json');
     echo json_encode($response);
     exit;
@@ -60,7 +114,7 @@ $token = GETPOST('token', 'alpha');
 
 // Validate input
 if ($productId <= 0) {
-    $response['message'] = 'Invalid product ID';
+    $response['message'] = 'Invalid product ID: ' . $productId;
     header('Content-Type: application/json');
     echo json_encode($response);
     exit;
@@ -77,7 +131,7 @@ try {
     $result = $product->fetch($productId);
     
     if ($result <= 0) {
-        $response['message'] = 'Product not found';
+        $response['message'] = 'Product not found (ID: ' . $productId . ')';
         header('Content-Type: application/json');
         echo json_encode($response);
         exit;
