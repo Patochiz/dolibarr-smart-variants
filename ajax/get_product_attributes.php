@@ -1,10 +1,10 @@
 <?php
 /**
- * Get Product Attributes AJAX Endpoint - Path Fixed Version
+ * Get Product Attributes AJAX Endpoint - Double inclusion fixed
  * 
  * @package SmartVariants
  * @author  Claude AI
- * @version 1.0.3
+ * @version 1.0.4
  */
 
 // Define constants for AJAX calls
@@ -18,62 +18,69 @@ if (!defined('NOREQUIREMENU')) define('NOREQUIREMENU', '1');
 if (!defined('NOREQUIREHTML')) define('NOREQUIREHTML', '1');
 if (!defined('NOREQUIREAJAX')) define('NOREQUIREAJAX', '0');
 
-// Include Dolibarr environment - Multiple path attempts
-$res = 0;
-$attempted_paths = array();
+// Check if Dolibarr is already loaded to avoid double inclusion
+if (!defined('DOL_VERSION')) {
+    // Include Dolibarr environment - Multiple path attempts
+    $res = 0;
+    $attempted_paths = array();
 
-// Try different possible paths
-$possible_paths = array(
-    "../../../main.inc.php",           // From /custom/smartvariants/ajax/ to /
-    "../../../../main.inc.php",        // Alternative
-    "../../../doli/main.inc.php",     // If in subdirectory
-    "../../../../doli/main.inc.php",   // Alternative subdirectory
-    "/home/diamanti/www/doli/main.inc.php", // Absolute path based on your config
-);
+    // Try different possible paths
+    $possible_paths = array(
+        "../../../main.inc.php",           // From /custom/smartvariants/ajax/ to /
+        "../../../../main.inc.php",        // Alternative
+        "../../../doli/main.inc.php",     // If in subdirectory
+        "../../../../doli/main.inc.php",   // Alternative subdirectory
+        "/home/diamanti/www/doli/main.inc.php", // Absolute path based on your config
+    );
 
-foreach ($possible_paths as $path) {
-    $attempted_paths[] = $path;
-    if (file_exists($path)) {
-        $res = @include $path;
-        if ($res) {
-            break;
-        }
-    }
-}
-
-// If still not loaded, try to find it dynamically
-if (!$res) {
-    // Try to find main.inc.php by going up the directory tree
-    $current_dir = __DIR__;
-    for ($i = 0; $i < 6; $i++) {
-        $current_dir = dirname($current_dir);
-        $main_file = $current_dir . '/main.inc.php';
-        $attempted_paths[] = $main_file;
-        
-        if (file_exists($main_file)) {
-            $res = @include $main_file;
-            if ($res) {
+    foreach ($possible_paths as $path) {
+        $attempted_paths[] = $path;
+        if (file_exists($path)) {
+            $res = @include_once $path; // Use include_once to avoid redeclaration
+            if ($res && defined('DOL_VERSION')) {
                 break;
             }
         }
     }
+
+    // If still not loaded, try to find it dynamically
+    if (!$res || !defined('DOL_VERSION')) {
+        // Try to find main.inc.php by going up the directory tree
+        $current_dir = __DIR__;
+        for ($i = 0; $i < 6; $i++) {
+            $current_dir = dirname($current_dir);
+            $main_file = $current_dir . '/main.inc.php';
+            $attempted_paths[] = $main_file;
+            
+            if (file_exists($main_file)) {
+                $res = @include_once $main_file; // Use include_once
+                if ($res && defined('DOL_VERSION')) {
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!$res || !defined('DOL_VERSION')) {
+        http_response_code(500);
+        header('Content-Type: application/json');
+        die(json_encode(array(
+            'success' => false, 
+            'message' => 'Cannot load Dolibarr environment',
+            'debug' => array(
+                'attempted_paths' => $attempted_paths,
+                'current_dir' => __DIR__,
+                'script_name' => $_SERVER['SCRIPT_NAME'],
+                'dol_version_defined' => defined('DOL_VERSION')
+            )
+        )));
+    }
 }
 
-if (!$res) {
-    http_response_code(500);
-    header('Content-Type: application/json');
-    die(json_encode(array(
-        'success' => false, 
-        'message' => 'Cannot load Dolibarr environment',
-        'debug' => array(
-            'attempted_paths' => $attempted_paths,
-            'current_dir' => __DIR__,
-            'script_name' => $_SERVER['SCRIPT_NAME']
-        )
-    )));
+// Ensure required classes are loaded
+if (!class_exists('Product')) {
+    require_once DOL_DOCUMENT_ROOT.'/product/class/product.class.php';
 }
-
-require_once DOL_DOCUMENT_ROOT.'/product/class/product.class.php';
 
 // Initialize response
 $response = array(
@@ -88,7 +95,8 @@ if (empty($user) || empty($user->id)) {
     $response['message'] = 'User not authenticated';
     $response['debug'] = array(
         'user_exists' => !empty($user),
-        'user_id' => !empty($user) ? $user->id : 'N/A'
+        'user_id' => !empty($user) ? $user->id : 'N/A',
+        'dol_version' => defined('DOL_VERSION') ? DOL_VERSION : 'undefined'
     );
     header('Content-Type: application/json');
     echo json_encode($response);
