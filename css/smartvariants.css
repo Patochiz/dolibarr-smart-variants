@@ -1,0 +1,189 @@
+/**
+ * Smart Variants CSS
+ * 
+ * @package SmartVariants
+ * @author  Claude AI
+ * @version 1.0
+ */
+
+/* Main variant container */
+.smart-variant-container {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 15px;
+    margin: 10px 0;
+    background-color: #f9f9f9;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Title styling */
+.variant-title {
+    margin: 0 0 15px 0;
+    color: #333;
+    font-size: 1.1em;
+    font-weight: bold;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 8px;
+}
+
+/* Attributes container */
+.variant-attributes {
+    margin-bottom: 15px;
+}
+
+/* Individual attribute group */
+.variant-attribute-group {
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Attribute labels */
+.variant-label {
+    font-weight: bold;
+    min-width: 120px;
+    color: #555;
+    margin-bottom: 0;
+}
+
+/* Attribute select boxes */
+.variant-attribute {
+    flex: 1;
+    max-width: 200px;
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    background-color: white;
+    font-size: 13px;
+}
+
+.variant-attribute:focus {
+    border-color: #4CAF50;
+    outline: none;
+    box-shadow: 0 0 5px rgba(76, 175, 80, 0.3);
+}
+
+.variant-attribute:invalid {
+    border-color: #f44336;
+}
+
+/* Action buttons */
+.variant-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+#add-variant-btn {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: bold;
+    transition: background-color 0.3s;
+}
+
+#add-variant-btn:hover {
+    background-color: #45a049;
+}
+
+#add-variant-btn:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
+#cancel-variant-btn {
+    background-color: #f44336;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background-color 0.3s;
+}
+
+#cancel-variant-btn:hover {
+    background-color: #da190b;
+}
+
+/* Messages */
+.variant-messages {
+    margin-top: 10px;
+}
+
+.variant-loading {
+    color: #2196F3;
+    font-style: italic;
+    padding: 5px;
+    background-color: #e3f2fd;
+    border-left: 4px solid #2196F3;
+    border-radius: 3px;
+}
+
+.variant-error {
+    color: #f44336;
+    font-weight: bold;
+    padding: 8px;
+    background-color: #ffebee;
+    border-left: 4px solid #f44336;
+    border-radius: 3px;
+}
+
+.variant-success {
+    color: #4CAF50;
+    font-weight: bold;
+    padding: 8px;
+    background-color: #e8f5e8;
+    border-left: 4px solid #4CAF50;
+    border-radius: 3px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .variant-attribute-group {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .variant-label {
+        min-width: auto;
+        width: 100%;
+    }
+    
+    .variant-attribute {
+        max-width: 100%;
+        width: 100%;
+    }
+    
+    .variant-actions {
+        flex-direction: column;
+        width: 100%;
+    }
+    
+    #add-variant-btn,
+    #cancel-variant-btn {
+        width: 100%;
+    }
+}
+
+/* Integration with Dolibarr theme */
+body.eldy .smart-variant-container {
+    border-color: #c5d0dc;
+    background-color: #f8f9fa;
+}
+
+body.md .smart-variant-container {
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+}
+
+/* Hide standard add button when in variant mode */
+body.variant-mode input[name="addline"],
+body.variant-mode .button-add-line {
+    display: none !important;
+}
