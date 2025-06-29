@@ -1,15 +1,22 @@
 <?php
 /**
- * Create or Find Variant AJAX Endpoint
+ * Create or Find Variant AJAX Endpoint - Fixed Version
  * 
  * @package SmartVariants
  * @author  Claude AI
- * @version 1.0
+ * @version 1.0.2
  */
 
-// Prevent direct access
-if (!defined('NOLOGIN')) define('NOLOGIN', '1');
+// Define constants for AJAX calls
+if (!defined('NOREQUIREUSER')) define('NOREQUIREUSER', '0');
+if (!defined('NOREQUIREDB')) define('NOREQUIREDB', '0');
+if (!defined('NOREQUIRESOC')) define('NOREQUIRESOC', '1');
+if (!defined('NOREQUIRETRAN')) define('NOREQUIRETRAN', '1');
 if (!defined('NOCSRFCHECK')) define('NOCSRFCHECK', '1');
+if (!defined('NOTOKENRENEWAL')) define('NOTOKENRENEWAL', '1');
+if (!defined('NOREQUIREMENU')) define('NOREQUIREMENU', '1');
+if (!defined('NOREQUIREHTML')) define('NOREQUIREHTML', '1');
+if (!defined('NOREQUIREAJAX')) define('NOREQUIREAJAX', '0');
 
 // Include Dolibarr environment
 $res = 0;
@@ -17,6 +24,7 @@ if (!$res && file_exists("../../../main.inc.php")) $res = @include "../../../mai
 if (!$res && file_exists("../../../../main.inc.php")) $res = @include "../../../../main.inc.php";
 if (!$res) {
     http_response_code(500);
+    header('Content-Type: application/json');
     die(json_encode(array('success' => false, 'message' => 'Cannot load Dolibarr environment')));
 }
 
@@ -25,10 +33,27 @@ require_once DOL_DOCUMENT_ROOT.'/variants/class/ProductAttribute.class.php';
 require_once DOL_DOCUMENT_ROOT.'/variants/class/ProductAttributeValue.class.php';
 require_once DOL_DOCUMENT_ROOT.'/variants/class/ProductCombination.class.php';
 
-// Security check
-if (!$user->rights->produit->creer) {
-    http_response_code(403);
-    echo json_encode(array('success' => false, 'message' => 'Access denied - product creation rights required'));
+// Initialize response
+$response = array(
+    'success' => false,
+    'variant_id' => null,
+    'ref' => '',
+    'message' => ''
+);
+
+// Check if user is logged in
+if (empty($user) || empty($user->id)) {
+    $response['message'] = 'User not authenticated';
+    header('Content-Type: application/json');
+    echo json_encode($response);
+    exit;
+}
+
+// Security check - need create rights for variants
+if (empty($user->rights->produit->creer) && empty($user->admin)) {
+    $response['message'] = 'Insufficient permissions - need product create rights';
+    header('Content-Type: application/json');
+    echo json_encode($response);
     exit;
 }
 
@@ -38,14 +63,6 @@ $attributesJson = GETPOST('attributes', 'alpha');
 $qty = GETPOST('qty', 'int');
 $price = GETPOST('price', 'alpha');
 $token = GETPOST('token', 'alpha');
-
-// Initialize response
-$response = array(
-    'success' => false,
-    'variant_id' => null,
-    'ref' => '',
-    'message' => ''
-);
 
 // Validate input
 if ($parentId <= 0) {
@@ -73,7 +90,7 @@ if (!is_array($attributes) || empty($attributes)) {
 
 // Debug logging
 if (!empty($conf->global->MAIN_SMARTVARIANTS_DEBUG)) {
-    dol_syslog('SmartVariants create_or_find_variant.php: Parent ID=' . $parentId . ' Attributes=' . $attributesJson);
+    dol_syslog('SmartVariants create_or_find_variant.php: Parent ID=' . $parentId . ' Attributes=' . $attributesJson . ' User=' . $user->id);
 }
 
 try {
