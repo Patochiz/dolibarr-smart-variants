@@ -4,7 +4,7 @@
  * 
  * @package SmartVariants
  * @author  Claude AI  
- * @version 1.0
+ * @version 1.0.1
  */
 
 dol_include_once('/core/modules/DolibarrModules.class.php');
@@ -32,7 +32,7 @@ class modSmartVariants extends DolibarrModules
         $this->descriptionlong = "Module pour simplifier la sélection et création de variantes de produits dans Dolibarr. Affiche uniquement les attributs du produit sélectionné au lieu de tous les attributs globaux.";
         
         // Version info
-        $this->version = '1.0.0';
+        $this->version = '1.0.1';
         $this->const_name = 'MAIN_MODULE_'.strtoupper($this->name);
         $this->picto = 'product';
         
@@ -65,7 +65,7 @@ class modSmartVariants extends DolibarrModules
         // Main menu entries
         $this->menu = array();
         
-        // Module configuration page
+        // Module configuration page - CORRIGÉ
         $this->config_page_url = array("admin.php@smartvariants");
         
         // Module parts
