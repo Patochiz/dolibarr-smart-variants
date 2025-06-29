@@ -1,5 +1,5 @@
 /**
- * Smart Variants Product Selector
+ * Smart Variants Product Selector - Corrected Version
  * 
  * @package SmartVariants
  * @author  Claude AI
@@ -10,18 +10,27 @@
 let selectedProductId = null;
 let productAttributes = {};
 let isVariantMode = false;
+let smartVariantsConfig = window.smartVariantsConfig || {};
 
 /**
  * Initialize the smart variant selector
  */
 function initSmartVariantSelector() {
-    console.log('Initializing Smart Variant Selector');
+    console.log('Initializing Smart Variant Selector v1.0');
+    
+    // Verify configuration
+    if (!smartVariantsConfig.ajaxUrl) {
+        console.error('SmartVariants: AJAX URL not configured');
+        return;
+    }
     
     // Watch for product selection changes
     watchProductSelection();
     
     // Setup event listeners
     setupEventListeners();
+    
+    console.log('Smart Variant Selector initialized successfully');
 }
 
 /**
@@ -33,12 +42,15 @@ function watchProductSelection() {
         'input[name="idprod"]',
         'select[name="idprod"]',
         'input[name="product_ref"]',
-        '.product-selector'
+        '.product-selector',
+        'input[name="search_idprod"]'
     ];
     
     productSelectors.forEach(function(selector) {
         $(document).on('change', selector, function() {
             const productId = $(this).val();
+            console.log('Product selection changed:', selector, productId);
+            
             if (productId && productId > 0) {
                 checkIfProductHasVariants(productId);
             } else {
@@ -47,13 +59,56 @@ function watchProductSelection() {
         });
     });
     
-    // Also watch for autocomplete selections
-    $(document).on('awesomplete-selectcomplete', '.product-autocomplete', function() {
-        const productId = $(this).data('product-id');
+    // Watch for autocomplete selections (Dolibarr 20.x)
+    $(document).on('awesomplete-selectcomplete', '.ui-autocomplete-input', function() {
+        const productId = $(this).attr('data-product-id') || extractProductIdFromValue($(this).val());
+        console.log('Autocomplete selection:', productId);
+        
         if (productId) {
-            checkIfProductHasVariants(productId);
+            setTimeout(function() {
+                checkIfProductHasVariants(productId);
+            }, 100);
         }
     });
+    
+    // Watch for jQuery UI autocomplete
+    $(document).on('autocompleteselect', '.ui-autocomplete-input', function(event, ui) {
+        if (ui.item && ui.item.id) {
+            console.log('jQuery UI autocomplete selection:', ui.item.id);
+            checkIfProductHasVariants(ui.item.id);
+        }
+    });
+    
+    // Watch for input changes with delay
+    let inputTimeout = null;
+    $(document).on('input', 'input[name="product_ref"]', function() {
+        const self = this;
+        clearTimeout(inputTimeout);
+        
+        inputTimeout = setTimeout(function() {
+            const productId = extractProductIdFromValue($(self).val());
+            if (productId) {
+                checkIfProductHasVariants(productId);
+            } else if ($(self).val() === '') {
+                hideVariantSelector();
+            }
+        }, 500);
+    });
+}
+
+/**
+ * Extract product ID from autocomplete value
+ */
+function extractProductIdFromValue(value) {
+    if (!value) return null;
+    
+    // Try to extract ID from patterns like "REF (ID)" or "REF - LABEL (ID)"
+    const matches = value.match(/\((\d+)\)$/);
+    if (matches && matches[1]) {
+        return parseInt(matches[1]);
+    }
+    
+    return null;
 }
 
 /**
@@ -66,16 +121,20 @@ function checkIfProductHasVariants(productId) {
     
     showLoadingMessage('Vérification des variantes...');
     
+    const ajaxUrl = smartVariantsConfig.ajaxUrl + 'get_product_attributes.php';
+    
     $.ajax({
-        url: '/custom/smartvariants/ajax/get_product_attributes.php',
+        url: ajaxUrl,
         method: 'POST',
         data: { 
             product_id: productId,
-            token: getCSRFToken()
+            token: smartVariantsConfig.token || getCSRFToken()
         },
         dataType: 'json',
+        timeout: 10000,
         success: function(response) {
             hideLoadingMessage();
+            console.log('Variants check response:', response);
             
             if (response.success && response.has_variants) {
                 selectedProductId = productId;
@@ -83,15 +142,28 @@ function checkIfProductHasVariants(productId) {
                 showVariantSelector(response.attributes);
             } else {
                 hideVariantSelector();
-                if (!response.success) {
-                    showErrorMessage(response.message || 'Erreur lors de la vérification des variantes');
+                if (!response.success && response.message) {
+                    console.warn('SmartVariants:', response.message);
                 }
             }
         },
         error: function(xhr, status, error) {
             hideLoadingMessage();
-            console.error('AJAX Error:', error);
-            showErrorMessage('Erreur de communication avec le serveur');
+            console.error('SmartVariants AJAX Error:', {
+                url: ajaxUrl,
+                status: status,
+                error: error,
+                response: xhr.responseText
+            });
+            
+            if (xhr.status === 404) {
+                showErrorMessage('Module SmartVariants non trouvé. Vérifiez l\'installation.');
+            } else if (xhr.status === 403) {
+                showErrorMessage('Accès refusé. Vérifiez vos permissions.');
+            } else {
+                showErrorMessage('Erreur de communication avec le serveur');
+            }
+            
             hideVariantSelector();
         }
     });
@@ -105,17 +177,24 @@ function checkIfProductHasVariants(productId) {
 function showVariantSelector(attributes) {
     console.log('Showing variant selector for attributes:', attributes);
     
+    if (!attributes || attributes.length === 0) {
+        console.warn('No attributes to display');
+        return;
+    }
+    
     let html = '<div class="variant-selection">';
     
     attributes.forEach(function(attr) {
         html += '<div class="form-group variant-attribute-group">';
-        html += '<label class="variant-label" for="variant_attr_' + attr.id + '">' + attr.label + ' :</label>';
+        html += '<label class="variant-label" for="variant_attr_' + attr.id + '">' + escapeHtml(attr.label) + ' :</label>';
         html += '<select name="variant_attr_' + attr.id + '" id="variant_attr_' + attr.id + '" class="variant-attribute flat" required>';
-        html += '<option value="">-- Choisir ' + attr.label + ' --</option>';
+        html += '<option value="">-- Choisir ' + escapeHtml(attr.label) + ' --</option>';
         
-        attr.values.forEach(function(value) {
-            html += '<option value="' + value.id + '">' + escapeHtml(value.value) + '</option>';
-        });
+        if (attr.values && attr.values.length > 0) {
+            attr.values.forEach(function(value) {
+                html += '<option value="' + value.id + '">' + escapeHtml(value.value) + '</option>';
+            });
+        }
         
         html += '</select>';
         html += '</div>';
@@ -127,9 +206,44 @@ function showVariantSelector(attributes) {
     $('#smart-variant-selector').slideDown(300);
     
     // Hide the standard add button
-    $('input[name="addline"], .button-add-line').hide();
+    hideStandardAddButtons();
     
     isVariantMode = true;
+    $('body').addClass('variant-mode-active');
+}
+
+/**
+ * Hide standard add buttons
+ */
+function hideStandardAddButtons() {
+    const buttonSelectors = [
+        'input[name="addline"]',
+        '.button-add-line',
+        'input[value="Ajouter"]',
+        'button[name="addline"]',
+        '.buttongen[onclick*="addline"]'
+    ];
+    
+    buttonSelectors.forEach(function(selector) {
+        $(selector).hide();
+    });
+}
+
+/**
+ * Show standard add buttons
+ */
+function showStandardAddButtons() {
+    const buttonSelectors = [
+        'input[name="addline"]',
+        '.button-add-line',
+        'input[value="Ajouter"]',
+        'button[name="addline"]',
+        '.buttongen[onclick*="addline"]'
+    ];
+    
+    buttonSelectors.forEach(function(selector) {
+        $(selector).show();
+    });
 }
 
 /**
@@ -139,11 +253,12 @@ function hideVariantSelector() {
     $('#smart-variant-selector').slideUp(300);
     
     // Show the standard add button
-    $('input[name="addline"], .button-add-line').show();
+    showStandardAddButtons();
     
     isVariantMode = false;
     selectedProductId = null;
     productAttributes = {};
+    $('body').removeClass('variant-mode-active');
 }
 
 /**
@@ -192,19 +307,23 @@ function addVariantToLine() {
  * @param {float} price Price
  */
 function findOrCreateVariant(parentId, attributes, qty, price) {
+    const ajaxUrl = smartVariantsConfig.ajaxUrl + 'create_or_find_variant.php';
+    
     $.ajax({
-        url: '/custom/smartvariants/ajax/create_or_find_variant.php',
+        url: ajaxUrl,
         method: 'POST',
         data: {
             parent_id: parentId,
             attributes: JSON.stringify(attributes),
             qty: qty,
             price: price,
-            token: getCSRFToken()
+            token: smartVariantsConfig.token || getCSRFToken()
         },
         dataType: 'json',
+        timeout: 15000,
         success: function(response) {
             hideLoadingMessage();
+            console.log('Create/find variant response:', response);
             
             if (response.success) {
                 // Add the line with the variant product
@@ -216,8 +335,8 @@ function findOrCreateVariant(parentId, attributes, qty, price) {
         },
         error: function(xhr, status, error) {
             hideLoadingMessage();
-            console.error('AJAX Error:', error);
-            showErrorMessage('Erreur de communication avec le serveur');
+            console.error('Create variant AJAX Error:', error);
+            showErrorMessage('Erreur lors de la création/recherche de la variante');
         }
     });
 }
@@ -241,14 +360,33 @@ function addLineToDocument(productId, productRef, qty, price) {
     
     // Trigger the standard add line process
     setTimeout(function() {
-        // Hide variant selector
+        // Hide variant selector first
         hideVariantSelector();
         
-        // Trigger the standard form submission
-        $('input[name="addline"]').trigger('click');
+        // Find and click the add button
+        const addButtons = [
+            'input[name="addline"]',
+            'button[name="addline"]',
+            '.button-add-line'
+        ];
+        
+        let buttonClicked = false;
+        for (let selector of addButtons) {
+            const button = $(selector).first();
+            if (button.length > 0) {
+                button.trigger('click');
+                buttonClicked = true;
+                break;
+            }
+        }
+        
+        if (!buttonClicked) {
+            console.warn('No add button found to trigger');
+            showErrorMessage('Impossible de trouver le bouton d\'ajout standard');
+        }
         
         // Reset the form
-        resetVariantForm();
+        setTimeout(resetVariantForm, 1000);
     }, 500);
 }
 
@@ -269,6 +407,7 @@ function resetVariantForm() {
     selectedProductId = null;
     productAttributes = {};
     isVariantMode = false;
+    $('body').removeClass('variant-mode-active');
 }
 
 /**
@@ -281,6 +420,13 @@ function setupEventListeners() {
             hideVariantSelector();
         }
     });
+    
+    // Handle form resets
+    $(document).on('reset', 'form', function() {
+        if (isVariantMode) {
+            hideVariantSelector();
+        }
+    });
 }
 
 // Utility functions
@@ -289,13 +435,14 @@ function setupEventListeners() {
  * Get CSRF token from the page
  */
 function getCSRFToken() {
-    return $('input[name="token"]').val() || '';
+    return $('input[name="token"]').val() || $('meta[name="csrf-token"]').attr('content') || '';
 }
 
 /**
  * Escape HTML to prevent XSS
  */
 function escapeHtml(text) {
+    if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
