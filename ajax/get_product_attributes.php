@@ -1,14 +1,25 @@
 <?php
 /**
- * Get Product Attributes AJAX Endpoint
+ * Get Product Attributes AJAX Endpoint - Corrected Version
  * 
  * @package SmartVariants
  * @author  Claude AI
  * @version 1.0
  */
 
+// Prevent direct access
+if (!defined('NOLOGIN')) define('NOLOGIN', '1');
+if (!defined('NOCSRFCHECK')) define('NOCSRFCHECK', '1');
+
 // Include Dolibarr environment
-require '../../../main.inc.php';
+$res = 0;
+if (!$res && file_exists("../../../main.inc.php")) $res = @include "../../../main.inc.php";
+if (!$res && file_exists("../../../../main.inc.php")) $res = @include "../../../../main.inc.php";
+if (!$res) {
+    http_response_code(500);
+    die(json_encode(array('success' => false, 'message' => 'Cannot load Dolibarr environment')));
+}
+
 require_once DOL_DOCUMENT_ROOT.'/product/class/product.class.php';
 
 // Security check
@@ -38,17 +49,47 @@ if ($productId <= 0) {
     exit;
 }
 
-// Verify CSRF token (basic implementation)
-if (empty($token)) {
-    $response['message'] = 'Security token missing';
-    header('Content-Type: application/json');
-    echo json_encode($response);
-    exit;
+// Debug logging
+if (!empty($conf->global->MAIN_SMARTVARIANTS_DEBUG)) {
+    dol_syslog('SmartVariants get_product_attributes.php: Product ID=' . $productId);
 }
 
 try {
-    // Check if the product has associated variants/attributes
-    $sql = "SELECT DISTINCT pa.rowid, pa.ref, pa.label, pa.description";
+    // First check if the product exists and is a parent product
+    $product = new Product($db);
+    $result = $product->fetch($productId);
+    
+    if ($result <= 0) {
+        $response['message'] = 'Product not found';
+        header('Content-Type: application/json');
+        echo json_encode($response);
+        exit;
+    }
+    
+    // Check if this product has variants (children)
+    $sql = "SELECT COUNT(*) as nb_variants";
+    $sql.= " FROM ".MAIN_DB_PREFIX."product_attribute_combination pac";
+    $sql.= " WHERE pac.fk_product_parent = ".(int)$productId;
+    $sql.= " AND pac.entity IN (".getEntity('product').")";
+    
+    $result = $db->query($sql);
+    $hasVariants = false;
+    
+    if ($result) {
+        $obj = $db->fetch_object($result);
+        $hasVariants = ($obj->nb_variants > 0);
+    }
+    
+    if (!$hasVariants) {
+        $response['success'] = true;
+        $response['message'] = 'Product has no variants';
+        header('Content-Type: application/json');
+        echo json_encode($response);
+        exit;
+    }
+    
+    // Get the attributes used by this product's variants
+    $sql = "SELECT DISTINCT pa.rowid, pa.ref, pa.label, pa.description, pa.position";
     $sql.= " FROM ".MAIN_DB_PREFIX."product_attribute pa";
     $sql.= " INNER JOIN ".MAIN_DB_PREFIX."product_attribute_combination_2_val pac2v";
     $sql.= "   ON pac2v.fk_prod_attr = pa.rowid";
@@ -72,14 +113,20 @@ try {
                     'ref' => $obj->ref,
                     'label' => $obj->label,
                     'description' => $obj->description,
+                    'position' => $obj->position,
                     'values' => array()
                 );
                 
-                // Get possible values for this attribute
-                $sql2 = "SELECT pav.rowid, pav.ref, pav.value";
+                // Get possible values for this attribute that are actually used by this product
+                $sql2 = "SELECT DISTINCT pav.rowid, pav.ref, pav.value, pav.position";
                 $sql2.= " FROM ".MAIN_DB_PREFIX."product_attribute_value pav";
-                $sql2.= " WHERE pav.fk_product_attribute = ".(int)$obj->rowid;
-                $sql2.= " AND pav.entity IN (".getEntity('product_attribute').")";
+                $sql2.= " INNER JOIN ".MAIN_DB_PREFIX."product_attribute_combination_2_val pac2v";
+                $sql2.= "   ON pac2v.fk_prod_attr_val = pav.rowid";
+                $sql2.= " INNER JOIN ".MAIN_DB_PREFIX."product_attribute_combination pac";
+                $sql2.= "   ON pac.rowid = pac2v.fk_prod_combination";
+                $sql2.= " WHERE pac.fk_product_parent = ".(int)$productId;
+                $sql2.= "   AND pav.fk_product_attribute = ".(int)$obj->rowid;
+                $sql2.= "   AND pav.entity IN (".getEntity('product_attribute').")";
                 $sql2.= " ORDER BY pav.position ASC, pav.value ASC";
                 
                 $result2 = $db->query($sql2);
@@ -89,7 +136,8 @@ try {
                         $attribute['values'][] = array(
                             'id' => $obj2->rowid,
                             'ref' => $obj2->ref,
-                            'value' => $obj2->value
+                            'value' => $obj2->value,
+                            'position' => $obj2->position
                         );
                     }
                 }
@@ -110,7 +158,7 @@ try {
             }
         } else {
             $response['success'] = true;
-            $response['message'] = 'Product has no variants';
+            $response['message'] = 'No attributes found for this product';
         }
     } else {
         $response['message'] = 'Database query failed: ' . $db->lasterror();
@@ -118,11 +166,15 @@ try {
     
 } catch (Exception $e) {
     $response['message'] = 'Error: ' . $e->getMessage();
+    
+    if (!empty($conf->global->MAIN_SMARTVARIANTS_DEBUG)) {
+        dol_syslog('SmartVariants get_product_attributes.php ERROR: ' . $e->getMessage(), LOG_ERR);
+    }
 }
 
-// Log for debugging (if debug mode is enabled)
+// Log response for debugging
 if (!empty($conf->global->MAIN_SMARTVARIANTS_DEBUG)) {
-    dol_syslog('SmartVariants get_product_attributes.php: Product ID=' . $productId . ' Response=' . json_encode($response));
+    dol_syslog('SmartVariants get_product_attributes.php Response: ' . json_encode($response));
 }
 
 // Return JSON response
