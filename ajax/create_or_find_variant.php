@@ -7,31 +7,44 @@
  * @version 1.0
  */
 
+// Prevent direct access
+if (!defined('NOLOGIN')) define('NOLOGIN', '1');
+if (!defined('NOCSRFCHECK')) define('NOCSRFCHECK', '1');
+
 // Include Dolibarr environment
-require '../../../main.inc.php';
+$res = 0;
+if (!$res && file_exists("../../../main.inc.php")) $res = @include "../../../main.inc.php";
+if (!$res && file_exists("../../../../main.inc.php")) $res = @include "../../../../main.inc.php";
+if (!$res) {
+    http_response_code(500);
+    die(json_encode(array('success' => false, 'message' => 'Cannot load Dolibarr environment')));
+}
+
 require_once DOL_DOCUMENT_ROOT.'/product/class/product.class.php';
+require_once DOL_DOCUMENT_ROOT.'/variants/class/ProductAttribute.class.php';
+require_once DOL_DOCUMENT_ROOT.'/variants/class/ProductAttributeValue.class.php';
+require_once DOL_DOCUMENT_ROOT.'/variants/class/ProductCombination.class.php';
 
 // Security check
 if (!$user->rights->produit->creer) {
     http_response_code(403);
-    echo json_encode(array('success' => false, 'message' => 'Access denied - insufficient permissions'));
+    echo json_encode(array('success' => false, 'message' => 'Access denied - product creation rights required'));
     exit;
 }
 
 // Get parameters
 $parentId = GETPOST('parent_id', 'int');
 $attributesJson = GETPOST('attributes', 'alpha');
-$qty = GETPOST('qty', 'alpha');
+$qty = GETPOST('qty', 'int');
 $price = GETPOST('price', 'alpha');
 $token = GETPOST('token', 'alpha');
 
 // Initialize response
 $response = array(
     'success' => false,
-    'variant_id' => 0,
+    'variant_id' => null,
     'ref' => '',
-    'message' => '',
-    'created' => false
+    'message' => ''
 );
 
 // Validate input
@@ -49,20 +62,27 @@ if (empty($attributesJson)) {
     exit;
 }
 
-// Verify CSRF token
-if (empty($token)) {
-    $response['message'] = 'Security token missing';
+// Parse attributes
+$attributes = json_decode($attributesJson, true);
+if (!is_array($attributes) || empty($attributes)) {
+    $response['message'] = 'Invalid attributes format';
     header('Content-Type: application/json');
     echo json_encode($response);
     exit;
 }
 
+// Debug logging
+if (!empty($conf->global->MAIN_SMARTVARIANTS_DEBUG)) {
+    dol_syslog('SmartVariants create_or_find_variant.php: Parent ID=' . $parentId . ' Attributes=' . $attributesJson);
+}
+
 try {
-    // Decode attributes
-    $attributes = json_decode($attributesJson, true);
+    // Load parent product
+    $parentProduct = new Product($db);
+    $result = $parentProduct->fetch($parentId);
     
-    if (!is_array($attributes) || empty($attributes)) {
-        $response['message'] = 'Invalid attributes format';
+    if ($result <= 0) {
+        $response['message'] = 'Parent product not found';
         header('Content-Type: application/json');
         echo json_encode($response);
         exit;
@@ -71,57 +91,65 @@ try {
     // Start transaction
     $db->begin();
     
-    // First, check if this combination already exists
+    // Check if a variant with these exact attributes already exists
     $existingVariantId = findExistingVariant($parentId, $attributes);
     
     if ($existingVariantId) {
-        // Variant already exists, use it
-        $product = new Product($db);
-        if ($product->fetch($existingVariantId) > 0) {
-            $response['success'] = true;
-            $response['variant_id'] = $existingVariantId;
-            $response['ref'] = $product->ref;
-            $response['message'] = 'Variante existante utilisée';
-            $response['created'] = false;
-        } else {
-            throw new Exception('Failed to load existing variant');
+        // Use existing variant
+        $variant = new Product($db);
+        $variant->fetch($existingVariantId);
+        
+        $response['success'] = true;
+        $response['variant_id'] = $existingVariantId;
+        $response['ref'] = $variant->ref;
+        $response['message'] = 'Variante existante utilisée';
+        
+        if (!empty($conf->global->MAIN_SMARTVARIANTS_DEBUG)) {
+            dol_syslog('SmartVariants: Using existing variant ID=' . $existingVariantId);
         }
     } else {
-        // Create new variant
-        $variantId = createNewVariant($parentId, $attributes, $price);
-        
-        if ($variantId > 0) {
-            $product = new Product($db);
-            if ($product->fetch($variantId) > 0) {
+        // Create new variant if auto-creation is enabled
+        if (!empty($conf->global->SMARTVARIANTS_AUTO_CREATE)) {
+            $variantId = createNewVariant($parentProduct, $attributes);
+            
+            if ($variantId > 0) {
+                $variant = new Product($db);
+                $variant->fetch($variantId);
+                
                 $response['success'] = true;
                 $response['variant_id'] = $variantId;
-                $response['ref'] = $product->ref;
+                $response['ref'] = $variant->ref;
                 $response['message'] = 'Nouvelle variante créée';
-                $response['created'] = true;
+                
+                if (!empty($conf->global->MAIN_SMARTVARIANTS_DEBUG)) {
+                    dol_syslog('SmartVariants: Created new variant ID=' . $variantId);
+                }
             } else {
-                throw new Exception('Failed to load created variant');
+                throw new Exception('Failed to create new variant');
             }
         } else {
-            throw new Exception('Failed to create variant');
+            $response['message'] = 'Variante inexistante. Création automatique désactivée.';
         }
     }
     
-    // Commit transaction
-    $db->commit();
+    if ($response['success']) {
+        $db->commit();
+    } else {
+        $db->rollback();
+    }
     
 } catch (Exception $e) {
-    // Rollback transaction
     $db->rollback();
-    
     $response['message'] = 'Error: ' . $e->getMessage();
     
-    // Log error
-    dol_syslog('SmartVariants create_or_find_variant.php ERROR: ' . $e->getMessage(), LOG_ERR);
+    if (!empty($conf->global->MAIN_SMARTVARIANTS_DEBUG)) {
+        dol_syslog('SmartVariants create_or_find_variant.php ERROR: ' . $e->getMessage(), LOG_ERR);
+    }
 }
 
-// Log for debugging
+// Log response for debugging
 if (!empty($conf->global->MAIN_SMARTVARIANTS_DEBUG)) {
-    dol_syslog('SmartVariants create_or_find_variant.php: Parent ID=' . $parentId . ' Response=' . json_encode($response));
+    dol_syslog('SmartVariants create_or_find_variant.php Response: ' . json_encode($response));
 }
 
 // Return JSON response
@@ -129,151 +157,248 @@ header('Content-Type: application/json');
 echo json_encode($response);
 
 /**
- * Find existing variant with the same attribute combination
+ * Find existing variant with exact attribute combination
  * 
- * @param int   $parentId   Parent product ID
+ * @param int $parentId Parent product ID
  * @param array $attributes Selected attributes
- * @return int              Variant product ID if found, 0 otherwise
+ * @return int|false Variant ID or false if not found
  */
 function findExistingVariant($parentId, $attributes)
 {
     global $db;
     
-    // TODO: Implement sophisticated variant matching logic
-    // This is a simplified version - you may need to enhance this
-    
+    // Build query to find combination with exact attributes
     $sql = "SELECT pac.fk_product_child";
     $sql.= " FROM ".MAIN_DB_PREFIX."product_attribute_combination pac";
-    $sql.= " INNER JOIN ".MAIN_DB_PREFIX."product_attribute_combination_2_val pac2v";
-    $sql.= "   ON pac2v.fk_prod_combination = pac.rowid";
     $sql.= " WHERE pac.fk_product_parent = ".(int)$parentId;
-    $sql.= " GROUP BY pac.fk_product_child";
-    $sql.= " HAVING COUNT(pac2v.fk_prod_attr_val) = ".count($attributes);
+    $sql.= " AND pac.entity IN (".getEntity('product').")";
+    
+    $result = $db->query($sql);
+    
+    if (!$result) {
+        return false;
+    }
+    
+    // Check each combination to find exact match
+    while ($obj = $db->fetch_object($result)) {
+        $combinationId = getCombinationId($parentId, $obj->fk_product_child);
+        
+        if ($combinationId && hasExactAttributes($combinationId, $attributes)) {
+            return $obj->fk_product_child;
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * Get combination ID for a product child
+ * 
+ * @param int $parentId Parent product ID
+ * @param int $childId Child product ID
+ * @return int|false Combination ID or false
+ */
+function getCombinationId($parentId, $childId)
+{
+    global $db;
+    
+    $sql = "SELECT rowid FROM ".MAIN_DB_PREFIX."product_attribute_combination";
+    $sql.= " WHERE fk_product_parent = ".(int)$parentId;
+    $sql.= " AND fk_product_child = ".(int)$childId;
+    $sql.= " AND entity IN (".getEntity('product').")";
     
     $result = $db->query($sql);
     
     if ($result && $db->num_rows($result) > 0) {
-        // For now, return the first match
-        // TODO: Enhance to check exact attribute combination
         $obj = $db->fetch_object($result);
-        return $obj->fk_product_child;
+        return $obj->rowid;
     }
     
-    return 0;
+    return false;
 }
 
 /**
- * Create a new product variant
+ * Check if combination has exact attributes
  * 
- * @param int   $parentId   Parent product ID  
- * @param array $attributes Selected attributes
- * @param float $price      Price override
- * @return int              New variant product ID
+ * @param int $combinationId Combination ID
+ * @param array $attributes Required attributes
+ * @return bool True if exact match
  */
-function createNewVariant($parentId, $attributes, $price = null)
+function hasExactAttributes($combinationId, $attributes)
+{
+    global $db;
+    
+    // Get all attributes for this combination
+    $sql = "SELECT fk_prod_attr, fk_prod_attr_val";
+    $sql.= " FROM ".MAIN_DB_PREFIX."product_attribute_combination_2_val";
+    $sql.= " WHERE fk_prod_combination = ".(int)$combinationId;
+    
+    $result = $db->query($sql);
+    
+    if (!$result) {
+        return false;
+    }
+    
+    $combinationAttrs = array();
+    while ($obj = $db->fetch_object($result)) {
+        $combinationAttrs[$obj->fk_prod_attr] = $obj->fk_prod_attr_val;
+    }
+    
+    // Check if attributes match exactly
+    if (count($combinationAttrs) !== count($attributes)) {
+        return false;
+    }
+    
+    foreach ($attributes as $attrId => $attrValueId) {
+        if (!isset($combinationAttrs[$attrId]) || $combinationAttrs[$attrId] != $attrValueId) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+/**
+ * Create a new variant product
+ * 
+ * @param Product $parentProduct Parent product object
+ * @param array $attributes Selected attributes
+ * @return int|false New variant ID or false on error
+ */
+function createNewVariant($parentProduct, $attributes)
 {
     global $db, $user, $conf;
     
-    // Load parent product
-    $parentProduct = new Product($db);
-    if ($parentProduct->fetch($parentId) <= 0) {
-        throw new Exception('Parent product not found');
-    }
-    
-    // Create new product based on parent
-    $variant = new Product($db);
-    
-    // Copy properties from parent
-    $variant->ref = generateVariantRef($parentProduct->ref, $attributes);
-    $variant->label = $parentProduct->label . ' - ' . generateVariantLabel($attributes);
-    $variant->description = $parentProduct->description;
-    $variant->type = $parentProduct->type;
-    $variant->status = 1; // Active
-    $variant->status_buy = $parentProduct->status_buy;
-    $variant->price = $price ? $price : $parentProduct->price;
-    $variant->price_base_type = $parentProduct->price_base_type;
-    $variant->tva_tx = $parentProduct->tva_tx;
-    $variant->weight = $parentProduct->weight;
-    $variant->weight_units = $parentProduct->weight_units;
-    $variant->length = $parentProduct->length;
-    $variant->length_units = $parentProduct->length_units;
-    $variant->width = $parentProduct->width;
-    $variant->width_units = $parentProduct->width_units;
-    $variant->height = $parentProduct->height;
-    $variant->height_units = $parentProduct->height_units;
-    $variant->surface = $parentProduct->surface;
-    $variant->surface_units = $parentProduct->surface_units;
-    $variant->volume = $parentProduct->volume;
-    $variant->volume_units = $parentProduct->volume_units;
-    
-    // Create the product
-    $result = $variant->create($user);
-    
-    if ($result > 0) {
-        // TODO: Create attribute combination record
-        // This requires creating records in:
-        // - llx_product_attribute_combination
-        // - llx_product_attribute_combination_2_val
+    try {
+        // Create new product
+        $variant = new Product($db);
         
-        return $variant->id;
-    } else {
-        throw new Exception('Failed to create variant product: ' . implode(', ', $variant->errors));
+        // Copy basic properties from parent
+        $variant->ref = generateVariantRef($parentProduct, $attributes);
+        $variant->label = generateVariantLabel($parentProduct, $attributes);
+        $variant->description = $parentProduct->description;
+        $variant->type = $parentProduct->type;
+        $variant->status = $parentProduct->status;
+        $variant->status_buy = $parentProduct->status_buy;
+        $variant->price = $parentProduct->price;
+        $variant->price_base_type = $parentProduct->price_base_type;
+        $variant->tva_tx = $parentProduct->tva_tx;
+        $variant->weight = $parentProduct->weight;
+        $variant->weight_units = $parentProduct->weight_units;
+        $variant->length = $parentProduct->length;
+        $variant->length_units = $parentProduct->length_units;
+        $variant->width = $parentProduct->width;
+        $variant->width_units = $parentProduct->width_units;
+        $variant->height = $parentProduct->height;
+        $variant->height_units = $parentProduct->height_units;
+        
+        // Create the product
+        $variantId = $variant->create($user);
+        
+        if ($variantId <= 0) {
+            throw new Exception('Failed to create variant product: ' . implode(', ', $variant->errors));
+        }
+        
+        // Create the combination
+        $combination = new ProductCombination($db);
+        $combination->fk_product_parent = $parentProduct->id;
+        $combination->fk_product_child = $variantId;
+        $combination->variation_price = 0;
+        $combination->variation_price_percentage = 0;
+        $combination->variation_weight = 0;
+        
+        $combinationId = $combination->create($user);
+        
+        if ($combinationId <= 0) {
+            // Delete the variant product if combination creation fails
+            $variant->delete($user);
+            throw new Exception('Failed to create product combination');
+        }
+        
+        // Link attributes to combination
+        foreach ($attributes as $attrId => $attrValueId) {
+            $sql = "INSERT INTO ".MAIN_DB_PREFIX."product_attribute_combination_2_val";
+            $sql.= " (fk_prod_combination, fk_prod_attr, fk_prod_attr_val)";
+            $sql.= " VALUES (".(int)$combinationId.", ".(int)$attrId.", ".(int)$attrValueId.")";
+            
+            $result = $db->query($sql);
+            
+            if (!$result) {
+                throw new Exception('Failed to link attributes to combination');
+            }
+        }
+        
+        return $variantId;
+        
+    } catch (Exception $e) {
+        if (!empty($conf->global->MAIN_SMARTVARIANTS_DEBUG)) {
+            dol_syslog('SmartVariants createNewVariant ERROR: ' . $e->getMessage(), LOG_ERR);
+        }
+        return false;
     }
 }
 
 /**
- * Generate a reference for the variant
+ * Generate reference for new variant
  * 
- * @param string $parentRef Parent product reference
- * @param array  $attributes Selected attributes  
+ * @param Product $parentProduct Parent product
+ * @param array $attributes Selected attributes
  * @return string Generated reference
  */
-function generateVariantRef($parentRef, $attributes)
+function generateVariantRef($parentProduct, $attributes)
 {
     global $db;
     
-    $suffix = '';
+    $ref = $parentProduct->ref;
     
-    foreach ($attributes as $attrId => $valueId) {
-        // Get attribute value
-        $sql = "SELECT pav.ref, pav.value";
-        $sql.= " FROM ".MAIN_DB_PREFIX."product_attribute_value pav";
-        $sql.= " WHERE pav.rowid = ".(int)$valueId;
+    // Add attribute values to reference
+    foreach ($attributes as $attrId => $attrValueId) {
+        $sql = "SELECT pav.ref, pav.value FROM ".MAIN_DB_PREFIX."product_attribute_value pav";
+        $sql.= " WHERE pav.rowid = ".(int)$attrValueId;
         
         $result = $db->query($sql);
-        if ($result && $obj = $db->fetch_object($result)) {
-            $suffix .= '-' . strtoupper(substr($obj->ref ? $obj->ref : $obj->value, 0, 3));
+        
+        if ($result && $db->num_rows($result) > 0) {
+            $obj = $db->fetch_object($result);
+            $valueRef = !empty($obj->ref) ? $obj->ref : substr($obj->value, 0, 3);
+            $ref .= '-' . strtoupper($valueRef);
         }
     }
     
-    return $parentRef . $suffix;
+    return $ref;
 }
 
 /**
- * Generate a label for the variant
+ * Generate label for new variant
  * 
+ * @param Product $parentProduct Parent product
  * @param array $attributes Selected attributes
  * @return string Generated label
  */
-function generateVariantLabel($attributes)
+function generateVariantLabel($parentProduct, $attributes)
 {
     global $db;
     
-    $parts = array();
+    $label = $parentProduct->label;
+    $attributeLabels = array();
     
-    foreach ($attributes as $attrId => $valueId) {
-        // Get attribute value
-        $sql = "SELECT pav.value";
-        $sql.= " FROM ".MAIN_DB_PREFIX."product_attribute_value pav";
-        $sql.= " WHERE pav.rowid = ".(int)$valueId;
+    // Collect attribute values
+    foreach ($attributes as $attrId => $attrValueId) {
+        $sql = "SELECT pav.value FROM ".MAIN_DB_PREFIX."product_attribute_value pav";
+        $sql.= " WHERE pav.rowid = ".(int)$attrValueId;
         
         $result = $db->query($sql);
-        if ($result && $obj = $db->fetch_object($result)) {
-            $parts[] = $obj->value;
+        
+        if ($result && $db->num_rows($result) > 0) {
+            $obj = $db->fetch_object($result);
+            $attributeLabels[] = $obj->value;
         }
     }
     
-    return implode(' - ', $parts);
+    if (!empty($attributeLabels)) {
+        $label .= ' (' . implode(', ', $attributeLabels) . ')';
+    }
+    
+    return $label;
 }
-
 ?>
