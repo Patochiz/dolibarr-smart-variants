@@ -1,0 +1,65 @@
+# SmartVariants translations - French
+CHARSET=UTF-8
+
+# Module information
+SmartVariantsSetup=Configuration Smart Variants
+SmartVariantsDescription=Smart Variants améliore la gestion des variantes de produits dans Dolibarr
+
+# Main interface
+VariantSelection=Sélection de variante
+AddToOrder=Ajouter à la commande
+Cancel=Annuler
+
+# Configuration page
+Settings=Paramètres
+Parameter=Paramètre
+Value=Valeur
+Description=Description
+Information=Information
+DebugInformation=Informations de debug
+
+# Configuration options
+DebugMode=Mode debug
+EnableDebugMode=Activer le mode debug pour les logs
+AutoCreateVariants=Création automatique
+AutomaticallyCreateNonExistentVariants=Créer automatiquement les variantes inexistantes
+ShowVariantReference=Afficher référence
+ShowVariantReferenceInSelectors=Afficher la référence des variantes dans les sélecteurs
+CacheDuration=Durée cache
+AttributesCacheDurationInSeconds=Durée du cache des attributs en secondes
+
+# Features description
+OnlyDisplaysAttributesOfSelectedProduct=Affiche uniquement les attributs du produit sélectionné
+SimplifiesVariantSelection=Simplifie la sélection des variantes
+AutomaticallyCreatesVariantsIfNeeded=Crée automatiquement les variantes si nécessaire
+IntegratesSeamlesslyWithDolibarr=S'intègre parfaitement avec Dolibarr
+
+# Debug information
+ModulePath=Chemin du module
+ModuleURL=URL du module
+DolibarrVersion=Version Dolibarr
+PHPVersion=Version PHP
+
+# Messages
+SetupSaved=Configuration sauvegardée
+Error=Erreur
+BackToModuleList=Retour à la liste des modules
+Modify=Modifier
+
+# Status messages
+ProductHasNoVariants=Ce produit n'a pas de variantes
+VariantAddedSuccessfully=Variante ajoutée avec succès
+ErrorProcessingVariant=Erreur lors du traitement de la variante
+PleaseSelectAllAttributes=Veuillez sélectionner tous les attributs requis
+CheckingVariants=Vérification des variantes...
+ProcessingVariant=Traitement de la variante...
+
+# Error messages
+AccessDenied=Accès refusé
+InvalidProductId=ID de produit invalide
+ProductNotFound=Produit non trouvé
+DatabaseQueryFailed=Échec de la requête base de données
+CommunicationError=Erreur de communication avec le serveur
+ModuleNotFound=Module SmartVariants non trouvé. Vérifiez l'installation.
+InsufficientPermissions=Permissions insuffisantes
+CannotFindAddButton=Impossible de trouver le bouton d'ajout standard
