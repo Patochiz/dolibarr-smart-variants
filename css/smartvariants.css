@@ -1,28 +1,28 @@
 /**
- * Smart Variants CSS
+ * Smart Variants CSS Styles
  * 
  * @package SmartVariants
  * @author  Claude AI
  * @version 1.0
  */
 
-/* Main variant container */
+/* Main container */
 .smart-variant-container {
-    border: 1px solid #ccc;
-    border-radius: 4px;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
     padding: 15px;
     margin: 10px 0;
-    background-color: #f9f9f9;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 /* Title styling */
 .variant-title {
-    margin: 0 0 15px 0;
-    color: #333;
-    font-size: 1.1em;
+    color: #495057;
+    margin-bottom: 15px;
+    font-size: 16px;
     font-weight: bold;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid #dee2e6;
     padding-bottom: 8px;
 }
 
@@ -31,84 +31,73 @@
     margin-bottom: 15px;
 }
 
-/* Individual attribute group */
-.variant-attribute-group {
-    margin-bottom: 12px;
+.variant-selection {
     display: flex;
-    align-items: center;
-    gap: 10px;
+    flex-wrap: wrap;
+    gap: 15px;
 }
 
-/* Attribute labels */
-.variant-label {
-    font-weight: bold;
-    min-width: 120px;
-    color: #555;
-    margin-bottom: 0;
-}
-
-/* Attribute select boxes */
-.variant-attribute {
+.variant-attribute-group {
     flex: 1;
-    max-width: 200px;
-    padding: 6px 8px;
-    border: 1px solid #ccc;
+    min-width: 200px;
+}
+
+.variant-label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 5px;
+    color: #495057;
+    font-size: 14px;
+}
+
+.variant-attribute {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ced4da;
     border-radius: 3px;
     background-color: white;
-    font-size: 13px;
+    font-size: 14px;
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
 }
 
 .variant-attribute:focus {
-    border-color: #4CAF50;
-    outline: none;
-    box-shadow: 0 0 5px rgba(76, 175, 80, 0.3);
+    border-color: #80bdff;
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
 }
 
-.variant-attribute:invalid {
-    border-color: #f44336;
-}
-
-/* Action buttons */
+/* Actions container */
 .variant-actions {
     display: flex;
     gap: 10px;
-    align-items: center;
+    margin-bottom: 10px;
+}
+
+.variant-actions .button {
+    padding: 8px 16px;
+    font-size: 14px;
+    border-radius: 3px;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s;
 }
 
 #add-variant-btn {
-    background-color: #4CAF50;
+    background-color: #28a745;
     color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: bold;
-    transition: background-color 0.3s;
 }
 
 #add-variant-btn:hover {
-    background-color: #45a049;
-}
-
-#add-variant-btn:disabled {
-    background-color: #cccccc;
-    cursor: not-allowed;
+    background-color: #218838;
 }
 
 #cancel-variant-btn {
-    background-color: #f44336;
+    background-color: #6c757d;
     color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 13px;
-    transition: background-color 0.3s;
 }
 
 #cancel-variant-btn:hover {
-    background-color: #da190b;
+    background-color: #545b62;
 }
 
 /* Messages */
@@ -117,73 +106,71 @@
 }
 
 .variant-loading {
-    color: #2196F3;
-    font-style: italic;
-    padding: 5px;
-    background-color: #e3f2fd;
-    border-left: 4px solid #2196F3;
+    background-color: #d1ecf1;
+    border: 1px solid #bee5eb;
+    color: #0c5460;
+    padding: 10px;
     border-radius: 3px;
+    margin: 5px 0;
 }
 
 .variant-error {
-    color: #f44336;
-    font-weight: bold;
-    padding: 8px;
-    background-color: #ffebee;
-    border-left: 4px solid #f44336;
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+    padding: 10px;
     border-radius: 3px;
+    margin: 5px 0;
 }
 
 .variant-success {
-    color: #4CAF50;
-    font-weight: bold;
-    padding: 8px;
-    background-color: #e8f5e8;
-    border-left: 4px solid #4CAF50;
+    background-color: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+    padding: 10px;
     border-radius: 3px;
+    margin: 5px 0;
+}
+
+/* Loading animation */
+.variant-loading::before {
+    content: "⏳ ";
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
 /* Responsive design */
 @media (max-width: 768px) {
-    .variant-attribute-group {
+    .variant-selection {
         flex-direction: column;
-        align-items: flex-start;
     }
     
-    .variant-label {
+    .variant-attribute-group {
         min-width: auto;
-        width: 100%;
-    }
-    
-    .variant-attribute {
-        max-width: 100%;
-        width: 100%;
     }
     
     .variant-actions {
         flex-direction: column;
-        width: 100%;
     }
     
-    #add-variant-btn,
-    #cancel-variant-btn {
+    .variant-actions .button {
         width: 100%;
+        margin-bottom: 5px;
     }
 }
 
-/* Integration with Dolibarr theme */
-body.eldy .smart-variant-container {
-    border-color: #c5d0dc;
-    background-color: #f8f9fa;
+/* Integration with Dolibarr themes */
+.fiche .smart-variant-container {
+    margin-left: 0;
+    margin-right: 0;
 }
 
-body.md .smart-variant-container {
-    border-radius: 8px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
-}
-
-/* Hide standard add button when in variant mode */
-body.variant-mode input[name="addline"],
-body.variant-mode .button-add-line {
+/* Hide standard buttons when in variant mode */
+.variant-mode-active .button-add-line,
+.variant-mode-active input[name="addline"] {
     display: none !important;
 }
