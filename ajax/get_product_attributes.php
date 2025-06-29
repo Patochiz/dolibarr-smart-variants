@@ -1,15 +1,22 @@
 <?php
 /**
- * Get Product Attributes AJAX Endpoint - Corrected Version
+ * Get Product Attributes AJAX Endpoint - Fixed Version
  * 
  * @package SmartVariants
  * @author  Claude AI
- * @version 1.0
+ * @version 1.0.2
  */
 
-// Prevent direct access
-if (!defined('NOLOGIN')) define('NOLOGIN', '1');
+// Define constants for AJAX calls
+if (!defined('NOREQUIREUSER')) define('NOREQUIREUSER', '0');
+if (!defined('NOREQUIREDB')) define('NOREQUIREDB', '0');
+if (!defined('NOREQUIRESOC')) define('NOREQUIRESOC', '1');
+if (!defined('NOREQUIRETRAN')) define('NOREQUIRETRAN', '1');
 if (!defined('NOCSRFCHECK')) define('NOCSRFCHECK', '1');
+if (!defined('NOTOKENRENEWAL')) define('NOTOKENRENEWAL', '1');
+if (!defined('NOREQUIREMENU')) define('NOREQUIREMENU', '1');
+if (!defined('NOREQUIREHTML')) define('NOREQUIREHTML', '1');
+if (!defined('NOREQUIREAJAX')) define('NOREQUIREAJAX', '0');
 
 // Include Dolibarr environment
 $res = 0;
@@ -17,21 +24,11 @@ if (!$res && file_exists("../../../main.inc.php")) $res = @include "../../../mai
 if (!$res && file_exists("../../../../main.inc.php")) $res = @include "../../../../main.inc.php";
 if (!$res) {
     http_response_code(500);
+    header('Content-Type: application/json');
     die(json_encode(array('success' => false, 'message' => 'Cannot load Dolibarr environment')));
 }
 
 require_once DOL_DOCUMENT_ROOT.'/product/class/product.class.php';
-
-// Security check
-if (!$user->rights->produit->lire) {
-    http_response_code(403);
-    echo json_encode(array('success' => false, 'message' => 'Access denied'));
-    exit;
-}
-
-// Get parameters
-$productId = GETPOST('product_id', 'int');
-$token = GETPOST('token', 'alpha');
 
 // Initialize response
 $response = array(
@@ -40,6 +37,26 @@ $response = array(
     'attributes' => array(),
     'message' => ''
 );
+
+// Check if user is logged in
+if (empty($user) || empty($user->id)) {
+    $response['message'] = 'User not authenticated';
+    header('Content-Type: application/json');
+    echo json_encode($response);
+    exit;
+}
+
+// Security check - more flexible permission check
+if (empty($user->rights->produit->lire) && empty($user->admin)) {
+    $response['message'] = 'Insufficient permissions - need product read rights';
+    header('Content-Type: application/json');
+    echo json_encode($response);
+    exit;
+}
+
+// Get parameters
+$productId = GETPOST('product_id', 'int');
+$token = GETPOST('token', 'alpha');
 
 // Validate input
 if ($productId <= 0) {
@@ -51,7 +68,7 @@ if ($productId <= 0) {
 
 // Debug logging
 if (!empty($conf->global->MAIN_SMARTVARIANTS_DEBUG)) {
-    dol_syslog('SmartVariants get_product_attributes.php: Product ID=' . $productId);
+    dol_syslog('SmartVariants get_product_attributes.php: Product ID=' . $productId . ' User=' . $user->id);
 }
 
 try {
